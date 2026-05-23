@@ -2,15 +2,12 @@ import mujoco as mj
 from mujoco.glfw import glfw
 import numpy as np
 import os
-import utility
-from forward_kinematics import forward_kinematics
-from inverse_kinematics import inverse_kinematics
-from scipy.optimize import fsolve
+from forward_kinematics import fk_using_homogenous_transformations
 
 
-xml_path = 'scene.xml'     # xml file (assumes this is in the same folder as this file)
-simend = 10                # simulation time
-print_camera_config = 0    # set to 1 to print camera config
+xml_path = 'planar.xml'     # xml file (assumes this is in the same folder as this file)
+simend = 90                    # simulation time
+print_camera_config = 0        # set to 1 to print camera config
 
 # For callback functions
 button_left = False
@@ -19,22 +16,18 @@ button_right = False
 lastx = 0
 lasty = 0
 
-
-def init_controller(model, data):
+def init_controller(model,data):
     # initialize the controller here. This function is called once, in the beginning
     pass
-
 
 def controller(model, data):
     # put the controller here. This function is called inside the simulation.
     pass
 
-
 def keyboard(window, key, scancode, act, mods):
     if act == glfw.PRESS and key == glfw.KEY_BACKSPACE:
         mj.mj_resetData(model, data)
         mj.mj_forward(model, data)
-
 
 def mouse_button(window, button, act, mods):
     # update button state
@@ -48,7 +41,6 @@ def mouse_button(window, button, act, mods):
 
     # update mouse position
     glfw.get_cursor_pos(window)
-
 
 def mouse_move(window, xpos, ypos):
     # compute mouse displacement, save
@@ -91,7 +83,6 @@ def mouse_move(window, xpos, ypos):
 
     mj.mjv_moveCamera(model, action, dx/height, dy/height, scene, cam)
 
-
 def scroll(window, xoffset, yoffset):
     action = mj.mjtMouse.mjMOUSE_ZOOM
     mj.mjv_moveCamera(model, action, 0.0, -0.05 * yoffset, scene, cam)
@@ -106,9 +97,6 @@ model = mj.MjModel.from_xml_path(xml_path)    # MuJoCo model
 data = mj.MjData(model)                       # MuJoCo data
 cam = mj.MjvCamera()                          # Abstract camera
 opt = mj.MjvOption()                          # visualization options
-
-# show attachment site frame
-opt.frame = mj.mjtFrame.mjFRAME_SITE
 
 # Init GLFW, create window, make OpenGL context current, request v-sync
 glfw.init()
@@ -129,9 +117,9 @@ glfw.set_mouse_button_callback(window, mouse_button)
 glfw.set_scroll_callback(window, scroll)
 
 # Example on how to set camera configuration
-cam.azimuth = -51.15
-cam.elevation = -22.97
-cam.distance = 2.35
+cam.azimuth = 90
+cam.elevation = -90
+cam.distance = 6.50
 cam.lookat = np.array([0.0, 0.0, 0.0])
 
 # initialize the controller
@@ -140,40 +128,48 @@ init_controller(model, data)
 # set the controller
 mj.set_mjcb_control(controller)
 
-q = model.key("home").qpos
-target_ee = [0.2, 0.4, 0.4, 3.14, 0, 0]
+planar_key_id = model.key("home").id
+planar_key_qpos = model.key_qpos[planar_key_id]
 
 while not glfw.window_should_close(window):
-    t = data.time
+    time_prev = data.time
 
-    new_joint_angles = fsolve(inverse_kinematics, q, args=target_ee)
-    data.qpos = new_joint_angles
-                
-    mj.mj_forward(model, data)    
-     
-    mj_ee_pose = data.site("attachment_site").xpos
-    mj_ee_mat = data.site("attachment_site").xmat
-    mj_ee_quat = np.zeros(4)
-    mj.mju_mat2Quat(mj_ee_quat, mj_ee_mat)
+    while (data.time - time_prev < 1.0/60.0):
+        data.time += 0.10                            # forwards time
+        data.qpos = planar_key_qpos.copy()           # initial joint angles
 
-    print(f"ee pose => {mj_ee_pose}")
-    print(f"ee quaternion => {mj_ee_quat}")
-    print("="*85)
+        # pose calculation using mujoco
+        ee_pose = data.site("end_effector").xpos
+        print(f"mujoco ee_pose => {ee_pose[:2]}")
+         
+        # pose calculation using fk code written previously
+        params = (1.0, 1.0, 0.25)
+        angles = data.qpos
+        e, *_ = fk_using_homogenous_transformations(params, angles)
+        print(f"forward kinematics ee_pose => {e}")
 
-    mj.mj_step(model, data)
+        mj.mj_forward(model, data)                   # only forward kinematics
 
+    if (data.time>=simend):
+        break;
+
+    # get framebuffer viewport
     viewport_width, viewport_height = glfw.get_framebuffer_size(window)
     viewport = mj.MjrRect(0, 0, viewport_width, viewport_height)
 
-    if (print_camera_config == 1):
-        print('cam.azimuth =',cam.azimuth,';','cam.elevation = ',cam.elevation,';','cam.distance = ',cam.distance)
-        print('cam.lookat = np.array([',cam.lookat[0],',',cam.lookat[1],',',cam.lookat[2],'])')
+    # print camera configuration (help to initialize the view)
+    if (print_camera_config==1):
+        print('cam.azimuth =',cam.azimuth,';','cam.elevation =',cam.elevation,';','cam.distance = ',cam.distance)
+        print('cam.lookat =np.array([',cam.lookat[0],',',cam.lookat[1],',',cam.lookat[2],'])')
 
+    # Update scene and render
     mj.mjv_updateScene(model, data, opt, None, cam, mj.mjtCatBit.mjCAT_ALL.value, scene)
     mj.mjr_render(viewport, scene, context)
 
+    # swap OpenGL buffers (blocking call due to v-sync)
     glfw.swap_buffers(window)
-    glfw.poll_events()
 
+    # process pending GUI events, call GLFW callbacks
+    glfw.poll_events()
 
 glfw.terminate()

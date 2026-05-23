@@ -2,11 +2,11 @@ import mujoco as mj
 from mujoco.glfw import glfw
 import numpy as np
 import os
-from forward_kinematics import fk_using_homogenous_transformations
+from forward_kinematics import forward_kinematics
 
 
-xml_path = 'planar.xml'     # xml file (assumes this is in the same folder as this file)
-simend = 90                    # simulation time
+xml_path = 'planar.xml'        # xml file (assumes this is in the same folder as this file)
+simend = 10                    # simulation time
 print_camera_config = 0        # set to 1 to print camera config
 
 # For callback functions
@@ -16,18 +16,22 @@ button_right = False
 lastx = 0
 lasty = 0
 
+
 def init_controller(model,data):
     # initialize the controller here. This function is called once, in the beginning
     pass
+
 
 def controller(model, data):
     # put the controller here. This function is called inside the simulation.
     pass
 
+
 def keyboard(window, key, scancode, act, mods):
     if act == glfw.PRESS and key == glfw.KEY_BACKSPACE:
         mj.mj_resetData(model, data)
         mj.mj_forward(model, data)
+
 
 def mouse_button(window, button, act, mods):
     # update button state
@@ -41,6 +45,7 @@ def mouse_button(window, button, act, mods):
 
     # update mouse position
     glfw.get_cursor_pos(window)
+
 
 def mouse_move(window, xpos, ypos):
     # compute mouse displacement, save
@@ -83,9 +88,11 @@ def mouse_move(window, xpos, ypos):
 
     mj.mjv_moveCamera(model, action, dx/height, dy/height, scene, cam)
 
+
 def scroll(window, xoffset, yoffset):
     action = mj.mjtMouse.mjMOUSE_ZOOM
     mj.mjv_moveCamera(model, action, 0.0, -0.05 * yoffset, scene, cam)
+
 
 # get the full path
 dirname = os.path.dirname(__file__)
@@ -128,48 +135,37 @@ init_controller(model, data)
 # set the controller
 mj.set_mjcb_control(controller)
 
-planar_key_id = model.key("home").id
-planar_key_qpos = model.key_qpos[planar_key_id]
+planar_qpos = model.key("home").qpos
 
 while not glfw.window_should_close(window):
-    time_prev = data.time
+    t = data.time
 
-    while (data.time - time_prev < 1.0/60.0):
-        data.time += 0.10                            # forwards time
-        data.qpos = planar_key_qpos.copy()           # initial joint angles
+    data.qpos = planar_qpos.copy()          
+    ee_pose = data.site("end_effector").xpos
+    params = (1.0, 1.0, 0.25)
+    angles = data.qpos
+    e, *_ = forward_kinematics(params, angles)
 
-        # pose calculation using mujoco
-        ee_pose = data.site("end_effector").xpos
-        print(f"mujoco ee_pose => {ee_pose[:2]}")
-         
-        # pose calculation using fk code written previously
-        params = (1.0, 1.0, 0.25)
-        angles = data.qpos
-        e, *_ = fk_using_homogenous_transformations(params, angles)
-        print(f"forward kinematics ee_pose => {e}")
+    mj.mj_forward(model, data)   
+                   
+    print(f"mujoco ee_pose => {ee_pose[:2]}")
+    print(f"forward kinematics ee_pose => {e}")
+    print("="*60)
 
-        mj.mj_forward(model, data)                   # only forward kinematics
+    mj.mj_step(model, data)
 
-    if (data.time>=simend):
-        break;
-
-    # get framebuffer viewport
     viewport_width, viewport_height = glfw.get_framebuffer_size(window)
     viewport = mj.MjrRect(0, 0, viewport_width, viewport_height)
 
-    # print camera configuration (help to initialize the view)
     if (print_camera_config==1):
         print('cam.azimuth =',cam.azimuth,';','cam.elevation =',cam.elevation,';','cam.distance = ',cam.distance)
         print('cam.lookat =np.array([',cam.lookat[0],',',cam.lookat[1],',',cam.lookat[2],'])')
 
-    # Update scene and render
     mj.mjv_updateScene(model, data, opt, None, cam, mj.mjtCatBit.mjCAT_ALL.value, scene)
     mj.mjr_render(viewport, scene, context)
 
-    # swap OpenGL buffers (blocking call due to v-sync)
     glfw.swap_buffers(window)
-
-    # process pending GUI events, call GLFW callbacks
     glfw.poll_events()
+
 
 glfw.terminate()

@@ -5,6 +5,7 @@ import os
 import utility
 from forward_kinematics import forward_kinematics
 from inverse_kinematics import inverse_kinematics
+from plot_and_save_trajectory import save_trajectory_plot, log_trajectory
 from scipy.optimize import fsolve
 
 
@@ -18,6 +19,13 @@ button_middle = False
 button_right = False
 lastx = 0
 lasty = 0
+
+
+def limacon(a, b, t):
+    x = (a + b * np.cos(2*np.pi*t)) * np.cos(2*np.pi*t)
+    y = (a + b * np.cos(2*np.pi*t)) * np.sin(2*np.pi*t)
+    
+    return x, y
 
 
 def init_controller(model, data):
@@ -37,7 +45,6 @@ def keyboard(window, key, scancode, act, mods):
 
 
 def mouse_button(window, button, act, mods):
-    # update button state
     global button_left
     global button_middle
     global button_right
@@ -46,12 +53,10 @@ def mouse_button(window, button, act, mods):
     button_middle = (glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_MIDDLE) == glfw.PRESS)
     button_right = (glfw.get_mouse_button(window, glfw.MOUSE_BUTTON_RIGHT) == glfw.PRESS)
 
-    # update mouse position
     glfw.get_cursor_pos(window)
 
 
 def mouse_move(window, xpos, ypos):
-    # compute mouse displacement, save
     global lastx
     global lasty
     global button_left
@@ -63,19 +68,15 @@ def mouse_move(window, xpos, ypos):
     lastx = xpos
     lasty = ypos
 
-    # no buttons down: nothing to do
     if (not button_left) and (not button_middle) and (not button_right):
         return
 
-    # get current window size
     width, height = glfw.get_window_size(window)
 
-    # get shift key state
     PRESS_LEFT_SHIFT = glfw.get_key(window, glfw.KEY_LEFT_SHIFT) == glfw.PRESS
     PRESS_RIGHT_SHIFT = glfw.get_key(window, glfw.KEY_RIGHT_SHIFT) == glfw.PRESS
     mod_shift = (PRESS_LEFT_SHIFT or PRESS_RIGHT_SHIFT)
 
-    # determine action based on mouse button
     if button_right:
         if mod_shift:
             action = mj.mjtMouse.mjMOUSE_MOVE_H
@@ -95,6 +96,7 @@ def mouse_move(window, xpos, ypos):
 def scroll(window, xoffset, yoffset):
     action = mj.mjtMouse.mjMOUSE_ZOOM
     mj.mjv_moveCamera(model, action, 0.0, -0.05 * yoffset, scene, cam)
+
 
 # get the full path
 dirname = os.path.dirname(__file__)
@@ -141,24 +143,32 @@ init_controller(model, data)
 mj.set_mjcb_control(controller)
 
 q = model.key("home").qpos
-target_ee = [0.2, 0.4, 0.4, 3.14, 0, 0]
+
+target_ee = [-0.134, 0.492, 0.488, 3.14, 0, 0]
+x_init = target_ee[0]
+y_init = target_ee[1]
+z_fixed = target_ee[2]
 
 while not glfw.window_should_close(window):
     t = data.time
 
+    x, y = limacon(0.1, 0.1, t)
+    target_ee[0] = x + x_init
+    target_ee[1] = y + y_init
+    target_ee[2] = z_fixed
+    
     new_joint_angles = fsolve(inverse_kinematics, q, args=target_ee)
     data.qpos = new_joint_angles
-                
-    mj.mj_forward(model, data)    
-     
-    mj_ee_pose = data.site("attachment_site").xpos
-    mj_ee_mat = data.site("attachment_site").xmat
-    mj_ee_quat = np.zeros(4)
-    mj.mju_mat2Quat(mj_ee_quat, mj_ee_mat)
+    
+    mj.mj_forward(model, data)     
 
-    print(f"ee pose => {mj_ee_pose}")
-    print(f"ee quaternion => {mj_ee_quat}")
+    mj_ee_pose = data.site("attachment_site").xpos.copy()
+    log_trajectory(mj_ee_pose)
+    print("Target:", target_ee[:3])
+    print("Actual:", mj_ee_pose)
     print("="*85)
+
+    q = new_joint_angles.copy()
 
     mj.mj_step(model, data)
 
@@ -175,5 +185,5 @@ while not glfw.window_should_close(window):
     glfw.swap_buffers(window)
     glfw.poll_events()
 
-
+save_trajectory_plot()
 glfw.terminate()

@@ -57,7 +57,7 @@ def plot_fk(o, p, q, e):
 
     plt.show()
 
-def forward_kinematics(PARAMS, ANGLES):
+def fk_using_homogenous_transformations(PARAMS, ANGLES):
     l1, l2, l3 = PARAMS
     t1 = ANGLES[0]
     t2 = ANGLES[1]
@@ -105,3 +105,8 @@ def forward_kinematics(PARAMS, ANGLES):
     e = np.array((E0[0], E0[1]))
 
     return (e, o, p, q)
+
+
+# e, o, p, q = fk_using_homogenous_transformations(PARAMS, ANGLES)
+# plot_fk(o, p, q, e)
+# create_fk_workspace_points(LIMITS)
