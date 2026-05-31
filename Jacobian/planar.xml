@@ -1,0 +1,42 @@
+<mujoco>
+    <!-- gravity -->
+    <option gravity="0 0 0" />
+    <!-- main_body -->
+    <worldbody>
+        <!-- light source -->
+        <light diffuse="0.5 0.5 0.5" pos="0 0 3" dir="0 0 -1" />
+        <!-- plane -->
+        <geom type="plane" size="2.5 2.5 0.1" rgba="0.9 0.9 0.9 1" />
+        <!-- link_1 -->
+        <body name="link_1" pos="-1 0 0.06">
+            <inertial mass="1" fullinertia="1 1 0.1 0 0 0" pos="0.5 0 0" />
+            <joint name="joint_1" type="hinge" pos="0 0 0" axis="0 0 1" />
+            <geom type="box" pos="0.5 0 0" size="0.5 0.05 0.05" rgba="0.8 0 0 1" />
+            <!-- link_2 -->
+            <body name="link_2" pos="1 0 0">
+                <inertial mass="0.0001" fullinertia="1 1 0.1 0 0 0" pos="0.5 0 0" />
+                <joint name="joint_2" type="hinge" pos="0 0 0" axis="0 0 1" />
+                <geom type="box" pos="0.5 0 0" size="0.5 0.05 0.05" rgba="0 0.8 0 1" />
+                <!-- link_3 -->
+                <body name="link_3" pos="1 0 0">
+                    <inertial mass="0.2" fullinertia="0.1 0.1 0.02 0 0 0" pos="0.125 0 0" />
+                    <joint name="joint_3" type="hinge" pos="0 0 0" axis="0 0 1" />
+                    <geom type="box" pos="0.125 0 0" size="0.125 0.05 0.05" rgba="0 0 0.8 1" />
+                    <!-- end_effector -->
+                    <site name="end_effector" type="sphere" rgba="0.8 0 0 1" size="0.05 0.05 0.05" pos="0.25 0 0" />
+                </body>
+            </body>
+        </body>
+    </worldbody>
+    <!-- sensor -->
+    <sensor>
+        <framelinvel name="link2_linvel" objtype="xbody" objname="link_2" />
+        <frameangvel name="link2_angvel" objtype="xbody" objname="link_2" />
+        <framelinvel name="site_linvel" objtype="site" objname="end_effector" />
+        <frameangvel name="site_angvel" objtype="site" objname="end_effector" />
+    </sensor>
+    <!-- keyframe -->
+    <keyframe>
+        <key name="home" qpos="1.57 -1.57 1.57" qvel="0.2 -0.4 0.3"/>
+    </keyframe>
+</mujoco>
