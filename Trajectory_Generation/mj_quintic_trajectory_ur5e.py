@@ -148,7 +148,7 @@ qf = np.array([np.pi, -np.pi, 0, 0, 0, np.pi])
 
 while not glfw.window_should_close(window) and data.time <= simend:
     t_eval = np.clip(data.time, t0, tf)
-    print(t_eval)
+    # print(t_eval)
     q, u, _ = quintic_interpolation(t_eval, t0, tf, q0, qf)
     data.qpos = q.copy()
     data.qvel = u.copy()
