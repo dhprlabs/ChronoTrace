@@ -3,7 +3,8 @@ from mujoco.glfw import glfw
 import numpy as np
 import os
 import utility
-from forward_kinematics import forward_kinematics
+import globals
+from state_machine import state_machine
 
 
 xml_path = 'scene.xml'     # xml file (assumes this is in the same folder as this file)
@@ -102,7 +103,7 @@ opt = mj.MjvOption()                          # visualization options
 glfw.init()
 
 primary_monitor = glfw.get_primary_monitor()
-window = glfw.create_window(1920, 1080, "Forward Kinematics", primary_monitor, None)
+window = glfw.create_window(1920, 1080, "UnitreeA1", primary_monitor, None)
 glfw.make_context_current(window)
 glfw.swap_interval(1)
 
@@ -119,10 +120,10 @@ glfw.set_mouse_button_callback(window, mouse_button)
 glfw.set_scroll_callback(window, scroll)
 
 # Example on how to set camera configuration
-cam.azimuth = -51.15
-cam.elevation = -22.97
-cam.distance = 2.35
-cam.lookat = np.array([0.0, 0.0, 0.0])
+cam.azimuth = 77.60000000000011
+cam.elevation = -28.638131510416667
+cam.distance = 1.612334067683594
+cam.lookat = np.array([-0.008101523900779548, 0.001781235495578865, 0.14461303456841276])
 
 # initialize the controller
 init_controller(model, data)
@@ -130,42 +131,17 @@ init_controller(model, data)
 # set the controller
 mj.set_mjcb_control(controller)
 
-home_key = model.key("home").qpos
+globals.init()
+globals.time = data.time
+
+
+initial_pose = model.key("home").qpos
+data.qpos = initial_pose
+mj.mj_forward(model, data)
+
 
 while not glfw.window_should_close(window):
-    time_prev = data.time
-
-    while (data.time - time_prev < 1.0/60.0):
-        data.time += 0.02                            
-        data.qpos = home_key.copy()                         
-
-        print("="*161)
-        print("mujoco")
-        print("="*161)
-
-        # pose calculation using mujoco
-        mj_ee_pose = data.site("attachment_site").xpos
-        print(f"ee pose => {mj_ee_pose}")
-        # quaternion calculation using mujoco
-        mj_ee_mat = data.site("attachment_site").xmat
-        mj_ee_quat = np.zeros(4)
-        mj.mju_mat2Quat(mj_ee_quat, mj_ee_mat)
-        print(f"ee quat => {mj_ee_quat}")
-        
-        print("="*161)
-        print("forward kinematics")
-        print("="*161)
-
-        my_pos, my_quat = forward_kinematics(home_key.copy())
-        # pose calculation using local fk
-        print(f"ee pose => {my_pos}")
-        # quaternion calculation using local fk
-        print(f"ee quat => {my_quat}")
-         
-        mj.mj_forward(model, data)                   
-
-    if (data.time>=simend):
-        break;
+    state_machine()
 
     # get framebuffer viewport
     viewport_width, viewport_height = glfw.get_framebuffer_size(window)
@@ -182,6 +158,8 @@ while not glfw.window_should_close(window):
 
     glfw.swap_buffers(window)
     glfw.poll_events()
+
+    globals.time += 0.001
 
 
 glfw.terminate()

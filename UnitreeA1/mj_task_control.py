@@ -2,8 +2,8 @@ import mujoco as mj
 from mujoco.glfw import glfw
 import numpy as np
 import os
-import utility
-from forward_kinematics import forward_kinematics
+import task_control as tc 
+from inverse_kinematics import inverse_kinematics
 
 
 xml_path = 'scene.xml'     # xml file (assumes this is in the same folder as this file)
@@ -102,7 +102,7 @@ opt = mj.MjvOption()                          # visualization options
 glfw.init()
 
 primary_monitor = glfw.get_primary_monitor()
-window = glfw.create_window(1920, 1080, "Forward Kinematics", primary_monitor, None)
+window = glfw.create_window(1920, 1080, "Jacobian", primary_monitor, None)
 glfw.make_context_current(window)
 glfw.swap_interval(1)
 
@@ -130,42 +130,39 @@ init_controller(model, data)
 # set the controller
 mj.set_mjcb_control(controller)
 
-home_key = model.key("home").qpos
+initial_angles = model.key("home").qpos
+initial_vel = model.key("home").qvel
+
+p_start = np.array([-0.134, 0.486, 0.693])
+p_goal  = np.array([0.350, 0.200, 0.600])
+
+q_start = np.array([1.0, 0.0, 0.0, 0.0]) 
+q_goal  = np.array([0.7071, 0.7071, 0.0, 0.0]) 
+
+duration = 3.0
+
+data.qpos = initial_angles.copy()
+data.qvel = initial_vel.copy()
+mj.mj_forward(model, data)     
+
 
 while not glfw.window_should_close(window):
-    time_prev = data.time
+    t_curr = data.time
+    
+    p_ref, v_ref, a_ref = tc.position_trajectory(p_start, p_goal, duration, t_curr, profile='quintic')
+    quat_ref = tc.orientation_quaternion_slerp(q_start, q_goal, duration, t_curr, profile='quintic')
 
-    while (data.time - time_prev < 1.0/60.0):
-        data.time += 0.02                            
-        data.qpos = home_key.copy()                         
+    print("="*161)
+    print("task control trajectory")
+    print("="*161)
+    print(np.round(p_ref, 3))
+    print(np.round(v_ref, 3))
+    print(np.round(a_ref, 3))
+    print(np.round(quat_ref, 3))
 
-        print("="*161)
-        print("mujoco")
-        print("="*161)
-
-        # pose calculation using mujoco
-        mj_ee_pose = data.site("attachment_site").xpos
-        print(f"ee pose => {mj_ee_pose}")
-        # quaternion calculation using mujoco
-        mj_ee_mat = data.site("attachment_site").xmat
-        mj_ee_quat = np.zeros(4)
-        mj.mju_mat2Quat(mj_ee_quat, mj_ee_mat)
-        print(f"ee quat => {mj_ee_quat}")
-        
-        print("="*161)
-        print("forward kinematics")
-        print("="*161)
-
-        my_pos, my_quat = forward_kinematics(home_key.copy())
-        # pose calculation using local fk
-        print(f"ee pose => {my_pos}")
-        # quaternion calculation using local fk
-        print(f"ee quat => {my_quat}")
-         
-        mj.mj_forward(model, data)                   
-
-    if (data.time>=simend):
-        break;
+    target_q = inverse_kinematics(p_ref, quat_ref, data.qpos.copy())
+    data.ctrl[:] = target_q
+    mj.mj_step(model, data)
 
     # get framebuffer viewport
     viewport_width, viewport_height = glfw.get_framebuffer_size(window)

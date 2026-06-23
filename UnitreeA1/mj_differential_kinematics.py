@@ -2,8 +2,8 @@ import mujoco as mj
 from mujoco.glfw import glfw
 import numpy as np
 import os
-import utility
-from forward_kinematics import forward_kinematics
+import pprint
+from differential_kinematics import differential_kinematics
 
 
 xml_path = 'scene.xml'     # xml file (assumes this is in the same folder as this file)
@@ -130,42 +130,23 @@ init_controller(model, data)
 # set the controller
 mj.set_mjcb_control(controller)
 
-home_key = model.key("home").qpos
+home_joint_angles = model.key("home").qpos
+home_joint_velocities = model.key("home").qvel
+
 
 while not glfw.window_should_close(window):
-    time_prev = data.time
+    t = data.time
 
-    while (data.time - time_prev < 1.0/60.0):
-        data.time += 0.02                            
-        data.qpos = home_key.copy()                         
+    print("="*161)
+    print("differential kinematics")
+    print("="*161)
 
-        print("="*161)
-        print("mujoco")
-        print("="*161)
-
-        # pose calculation using mujoco
-        mj_ee_pose = data.site("attachment_site").xpos
-        print(f"ee pose => {mj_ee_pose}")
-        # quaternion calculation using mujoco
-        mj_ee_mat = data.site("attachment_site").xmat
-        mj_ee_quat = np.zeros(4)
-        mj.mju_mat2Quat(mj_ee_quat, mj_ee_mat)
-        print(f"ee quat => {mj_ee_quat}")
+    v, w = differential_kinematics(home_joint_angles, home_joint_velocities)
+    pprint.pprint(v)
+    pprint.pprint(w)
         
-        print("="*161)
-        print("forward kinematics")
-        print("="*161)
+    mj.mj_forward(model, data)     
 
-        my_pos, my_quat = forward_kinematics(home_key.copy())
-        # pose calculation using local fk
-        print(f"ee pose => {my_pos}")
-        # quaternion calculation using local fk
-        print(f"ee quat => {my_quat}")
-         
-        mj.mj_forward(model, data)                   
-
-    if (data.time>=simend):
-        break;
 
     # get framebuffer viewport
     viewport_width, viewport_height = glfw.get_framebuffer_size(window)

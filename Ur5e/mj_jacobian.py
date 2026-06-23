@@ -2,8 +2,8 @@ import mujoco as mj
 from mujoco.glfw import glfw
 import numpy as np
 import os
-import utility
-from forward_kinematics import forward_kinematics
+import pprint
+from jacobian import calculate_jacobian_matrix
 
 
 xml_path = 'scene.xml'     # xml file (assumes this is in the same folder as this file)
@@ -102,7 +102,7 @@ opt = mj.MjvOption()                          # visualization options
 glfw.init()
 
 primary_monitor = glfw.get_primary_monitor()
-window = glfw.create_window(1920, 1080, "Forward Kinematics", primary_monitor, None)
+window = glfw.create_window(1920, 1080, "Jacobian", primary_monitor, None)
 glfw.make_context_current(window)
 glfw.swap_interval(1)
 
@@ -130,42 +130,47 @@ init_controller(model, data)
 # set the controller
 mj.set_mjcb_control(controller)
 
-home_key = model.key("home").qpos
+initial_q_angles = model.key("home").qpos
+initial_q_vel = model.key("home").qvel
+wrench_force = np.array([0.0, 0.0, -29.4, 0.0, 0.0, 0.0])
+
+data.qpos = initial_q_angles.copy()
+data.qvel = initial_q_vel.copy()
+mj.mj_forward(model, data)     
+
 
 while not glfw.window_should_close(window):
-    time_prev = data.time
+    t = data.time
 
-    while (data.time - time_prev < 1.0/60.0):
-        data.time += 0.02                            
-        data.qpos = home_key.copy()                         
+    current_q_angles = data.qpos.copy()
+    current_q_vel = data.qvel.copy()
+    
+    jacp = np.zeros(shape=(3, model.nv))
+    jacr = np.zeros(shape=(3, model.nv))
+    site_id = model.site("attachment_site").id
+    mj.mj_jacSite(model, data, jacp, jacr, site_id)
+    mj_J = np.vstack([jacp, jacr])
 
-        print("="*161)
-        print("mujoco")
-        print("="*161)
+    J = calculate_jacobian_matrix(current_q_angles)
+    
+    mj_vel = mj_J @ current_q_vel
+    my_vel = J @ current_q_vel
 
-        # pose calculation using mujoco
-        mj_ee_pose = data.site("attachment_site").xpos
-        print(f"ee pose => {mj_ee_pose}")
-        # quaternion calculation using mujoco
-        mj_ee_mat = data.site("attachment_site").xmat
-        mj_ee_quat = np.zeros(4)
-        mj.mju_mat2Quat(mj_ee_quat, mj_ee_mat)
-        print(f"ee quat => {mj_ee_quat}")
-        
-        print("="*161)
-        print("forward kinematics")
-        print("="*161)
+    mj_vel_torque = mj_J.T @ wrench_force
+    my_vel_torque = J.T @ wrench_force
 
-        my_pos, my_quat = forward_kinematics(home_key.copy())
-        # pose calculation using local fk
-        print(f"ee pose => {my_pos}")
-        # quaternion calculation using local fk
-        print(f"ee quat => {my_quat}")
-         
-        mj.mj_forward(model, data)                   
+    print("="*161)
+    print("mujoco torque")
+    print("="*161)
+    print(np.round(mj_vel_torque, 5))
 
-    if (data.time>=simend):
-        break;
+    print("="*161)
+    print("jacobian torque")
+    print("="*161)
+    print(np.round(my_vel_torque, 5))
+
+    data.ctrl[:] = current_q_angles        
+    mj.mj_step(model, data)
 
     # get framebuffer viewport
     viewport_width, viewport_height = glfw.get_framebuffer_size(window)

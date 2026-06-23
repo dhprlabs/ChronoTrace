@@ -2,8 +2,9 @@ import mujoco as mj
 from mujoco.glfw import glfw
 import numpy as np
 import os
-import utility
-from forward_kinematics import forward_kinematics
+import pprint
+import joint_control as jc
+import trajectory_tracking_control as ttc 
 
 
 xml_path = 'scene.xml'     # xml file (assumes this is in the same folder as this file)
@@ -102,7 +103,7 @@ opt = mj.MjvOption()                          # visualization options
 glfw.init()
 
 primary_monitor = glfw.get_primary_monitor()
-window = glfw.create_window(1920, 1080, "Forward Kinematics", primary_monitor, None)
+window = glfw.create_window(1920, 1080, "Jacobian", primary_monitor, None)
 glfw.make_context_current(window)
 glfw.swap_interval(1)
 
@@ -130,42 +131,51 @@ init_controller(model, data)
 # set the controller
 mj.set_mjcb_control(controller)
 
-home_key = model.key("home").qpos
+initial_angles = model.key("home").qpos
+initial_vel = model.key("home").qvel
+
+target_angles = np.array([0.8, -0.6, 0.4, 1.57, 0.0, 0.0]) 
+duration = 6.0 
+
+kp_gains = np.array([200.0, 300.0, 200.0, 100.0, 50.0, 10.0])
+kv_gains = ttc.compute_critically_damped_kv(kp_gains)
+
+data.qpos = initial_angles.copy()
+data.qvel = initial_vel.copy()
+mj.mj_forward(model, data)     
+
+CONTROL_MODE = 'pd_ff' # 'pd_ff' = PD + Feedforward, 'inv_dyn' = Inverse Dynamics Control
+
 
 while not glfw.window_should_close(window):
-    time_prev = data.time
+    current_time = data.time
+    
+    q_d, q_dot_d, q_ddot_d = jc.quintic_trajectory(
+        q0=initial_angles, 
+        qf=target_angles, 
+        tf=duration, 
+        t=current_time
+    )
 
-    while (data.time - time_prev < 1.0/60.0):
-        data.time += 0.02                            
-        data.qpos = home_key.copy()                         
+    print("="*161)
+    print("point-to-point quintic trajectory")
+    print("="*161)
+    print(np.round(q_d, 3))
+    print(np.round(q_dot_d, 3))
+    print(np.round(q_ddot_d, 3))
 
-        print("="*161)
-        print("mujoco")
-        print("="*161)
+    if CONTROL_MODE == 'pd_ff':
+        tau = ttc.pd_feedforward_control(model, data, q_d, q_dot_d, q_ddot_d, kp_gains, kv_gains)
+    elif CONTROL_MODE == 'inv_dyn':
+        tau = ttc.inverse_dynamics_control(model, data, q_d, q_dot_d, q_ddot_d, kp_gains, kv_gains)
 
-        # pose calculation using mujoco
-        mj_ee_pose = data.site("attachment_site").xpos
-        print(f"ee pose => {mj_ee_pose}")
-        # quaternion calculation using mujoco
-        mj_ee_mat = data.site("attachment_site").xmat
-        mj_ee_quat = np.zeros(4)
-        mj.mju_mat2Quat(mj_ee_quat, mj_ee_mat)
-        print(f"ee quat => {mj_ee_quat}")
-        
-        print("="*161)
-        print("forward kinematics")
-        print("="*161)
+    print("="*161)
+    print("calculated torques")
+    print("="*161)
+    print(np.round(tau, 3))
 
-        my_pos, my_quat = forward_kinematics(home_key.copy())
-        # pose calculation using local fk
-        print(f"ee pose => {my_pos}")
-        # quaternion calculation using local fk
-        print(f"ee quat => {my_quat}")
-         
-        mj.mj_forward(model, data)                   
-
-    if (data.time>=simend):
-        break;
+    data.ctrl[:] = tau        
+    mj.mj_step(model, data)
 
     # get framebuffer viewport
     viewport_width, viewport_height = glfw.get_framebuffer_size(window)
