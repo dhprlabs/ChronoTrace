@@ -1,4 +1,3 @@
-import globals
 
 
 class Parameters:
@@ -10,6 +9,7 @@ class Parameters:
         self.t_stand = 0.1
         self.t_step = 0.2
 
-
+        self.lz_0 = -0.249
+        self.hc_l = 0.075
 
 params = Parameters()
